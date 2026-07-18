@@ -26,14 +26,15 @@
 #include <linux/wait.h>
 #include <linux/types.h>
 #include <linux/gfp.h>
-#include <asm-generic/errno.h>
-#include <stdarg.h>
+#include <linux/stdarg.h>
 
 #include "ixx_usb_core.h"
 
+#define get_canfd_dlc(i) (min_t(__u8, (i), CANFD_MAX_DLC))
+
 #ifdef CANFD_CAPABLE
 
-MODULE_SUPPORTED_DEVICE("IXXAT Automation GmbH USB-to-CAN FD");
+// MODULE_SUPPORTED_DEVICE("IXXAT Automation GmbH USB-to-CAN FD");
 
 /* use ifi can fd clock due to internal bittiming calculations */
 #define IFIFD_CRYSTAL_HZ	      80000000
@@ -622,7 +623,7 @@ static int ixx_usbfd_handle_canmsg(struct ixx_usb_device *dev,
 			can_frame->flags |= CANFD_ESI;
 
 		can_frame->len =
-			can_dlc2len(
+			can_fd_dlc2len(
 			get_canfd_dlc((flags & IXXAT_USBFD_MSG_FLAGS_DLC)
 			>> 16));
 	}	else {
@@ -896,7 +897,7 @@ static int ixx_usbfd_encode_msg(struct ixx_usb_device *dev, struct sk_buff *skb,
 			can_msg.flags |= IXXAT_USBFD_MSG_FLAGS_FDR;
 	}
 
-	can_msg.flags |= (can_len2dlc(cf->len) << 16) &
+	can_msg.flags |= (can_fd_len2dlc(cf->len) << 16) &
 		IXXAT_USBFD_MSG_FLAGS_DLC;
 
 	can_msg.flags = cpu_to_le32(can_msg.flags);

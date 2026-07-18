@@ -26,12 +26,11 @@
 #include <linux/can.h>
 #include <linux/can/dev.h>
 #include <linux/can/error.h>
-#include <asm-generic/errno.h>
 
 #include "ixx_usb_core.h"
 #include "linux/ktime.h"
 
-MODULE_AUTHOR("Michael Hengler <mhengler@ixxat.de>");
+// MODULE_AUTHOR("Michael Hengler <mhengler@ixxat.de>");
 MODULE_DESCRIPTION("CAN driver for IXXAT USB-to-CAN V2 adapters");
 MODULE_LICENSE("GPL v2");
 
@@ -239,6 +238,7 @@ static void ixxat_usb_write_bulk_callback(struct urb *urb)
         struct ixx_tx_urb_context *context = urb->context;
         struct ixx_usb_device *dev;
         struct net_device *netdev;
+        unsigned int skb_len;
 
         BUG_ON(!context);
 
@@ -279,7 +279,7 @@ static void ixxat_usb_write_bulk_callback(struct urb *urb)
         }
 
         /* should always release echo skb and corresponding context */
-        can_get_echo_skb(netdev, context->echo_index);
+        skb_len = can_get_echo_skb(netdev, context->echo_index, NULL);
         context->echo_index = IXXAT_USB_MAX_TX_URBS;
 
         /* do wakeup tx queue in case of success only */
@@ -338,13 +338,13 @@ static netdev_tx_t ixxat_usb_ndo_start_xmit(struct sk_buff *skb,
 
         usb_anchor_urb(urb, &dev->tx_submitted);
 
-        can_put_echo_skb(skb, netdev, context->echo_index);
+        can_put_echo_skb(skb, netdev, context->echo_index, 0);
 
         atomic_inc(&dev->active_tx_urbs);
 
         err = usb_submit_urb(urb, GFP_ATOMIC);
         if (err) {
-                can_free_echo_skb(netdev, context->echo_index);
+                can_free_echo_skb(netdev, context->echo_index, NULL);
 
                 usb_unanchor_urb(urb);
 
@@ -891,9 +891,12 @@ static int ixxat_usb_probe(struct usb_interface *intf,
 }
 
 /* usb specific object needed to register this driver with the usb subsystem */
-static struct usb_driver ixx_usb_driver = { .name = IXXAT_USB_DRIVER_NAME,
-                .disconnect = ixxat_usb_disconnect, .probe = ixxat_usb_probe,
-                .id_table = ixxat_usb_table, };
+static struct usb_driver ixx_usb_driver = {
+        .name = IXXAT_USB_DRIVER_NAME,
+        .probe = ixxat_usb_probe,
+        .disconnect = ixxat_usb_disconnect,
+        .id_table = ixxat_usb_table,
+};
 
 static int __init ixx_usb_init(void)
 {
@@ -931,7 +934,7 @@ static void __exit ixx_usb_exit(void)
         int err;
 
         /* last chance do send any synchronous commands here */
-        err = driver_for_each_device(&ixx_usb_driver.drvwrap.driver, NULL,
+        err = driver_for_each_device(&ixx_usb_driver.driver, NULL,
                          NULL, ixxat_usb_do_device_exit);
         if (err)
             pr_err("%s: failed to stop all can devices (err %d)\n",
